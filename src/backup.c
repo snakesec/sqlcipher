@@ -85,14 +85,13 @@ static Btree *findBtree(sqlite3 *pErrorDb, sqlite3 *pDb, const char *zDb){
   if( i==1 ){
     Parse sParse;
     int rc = 0;
-    memset(&sParse, 0, sizeof(sParse));
-    sParse.db = pDb;
+    sqlite3ParseObjectInit(&sParse,pDb);
     if( sqlite3OpenTempDatabase(&sParse) ){
       sqlite3ErrorWithMsg(pErrorDb, sParse.rc, "%s", sParse.zErrMsg);
       rc = SQLITE_ERROR;
     }
     sqlite3DbFree(pErrorDb, sParse.zErrMsg);
-    sqlite3ParserReset(&sParse);
+    sqlite3ParseObjectReset(&sParse);
     if( rc ){
       return 0;
     }
@@ -157,12 +156,12 @@ sqlite3_backup *sqlite3_backup_init(
 #ifdef SQLITE_HAS_CODEC
   {
     extern int sqlcipher_find_db_index(sqlite3*, const char*);
-    extern void sqlite3CodecGetKey(sqlite3*, int, void**, int*);
+    extern void sqlcipherCodecGetKey(sqlite3*, int, void**, int*);
     int srcNKey, destNKey;
     void *zKey;
 
-    sqlite3CodecGetKey(pSrcDb, sqlcipher_find_db_index(pSrcDb, zSrcDb), &zKey, &srcNKey);
-    sqlite3CodecGetKey(pDestDb, sqlcipher_find_db_index(pDestDb, zDestDb), &zKey, &destNKey);
+    sqlcipherCodecGetKey(pSrcDb, sqlcipher_find_db_index(pSrcDb, zSrcDb), &zKey, &srcNKey);
+    sqlcipherCodecGetKey(pDestDb, sqlcipher_find_db_index(pDestDb, zDestDb), &zKey, &destNKey);
     zKey = NULL;
 
     /* either both databases must be plaintext, or both must be encrypted */
@@ -258,6 +257,7 @@ static int backupOnePage(
   const i64 iEnd = (i64)iSrcPg*(i64)nSrcPgsz;
 /* BEGIN SQLCIPHER */
 #ifdef SQLITE_HAS_CODEC
+  extern void *sqlcipherPagerGetCodec(Pager*);
   /* Use BtreeGetReserveNoMutex() for the source b-tree, as although it is
   ** guaranteed that the shared-mutex is held by this thread, handle
   ** p->pSrc may not actually be the owner.  */
@@ -273,20 +273,14 @@ static int backupOnePage(
   assert( !isFatalError(p->rc) );
   assert( iSrcPg!=PENDING_BYTE_PAGE(p->pSrc->pBt) );
   assert( zSrcData );
-
-  /* Catch the case where the destination is an in-memory database and the
-  ** page sizes of the source and destination differ. 
-  */
-  if( nSrcPgsz!=nDestPgsz && sqlite3PagerIsMemdb(pDestPager) ){
-    rc = SQLITE_READONLY;
-  }
+  assert( nSrcPgsz==nDestPgsz || sqlite3PagerIsMemdb(pDestPager)==0 );
 
 /* BEGIN SQLCIPHER */
 #ifdef SQLITE_HAS_CODEC
   /* Backup is not possible if the page size of the destination is changing
   ** and a codec is in use.
   */
-  if( nSrcPgsz!=nDestPgsz && sqlite3PagerGetCodec(pDestPager)!=0 ){
+  if( nSrcPgsz!=nDestPgsz && sqlcipherPagerGetCodec(pDestPager)!=0 ){
     rc = SQLITE_READONLY;
   }
 
@@ -434,7 +428,10 @@ int sqlite3_backup_step(sqlite3_backup *p, int nPage){
     pgszSrc = sqlite3BtreeGetPageSize(p->pSrc);
     pgszDest = sqlite3BtreeGetPageSize(p->pDest);
     destMode = sqlite3PagerGetJournalMode(sqlite3BtreePager(p->pDest));
-    if( SQLITE_OK==rc && destMode==PAGER_JOURNALMODE_WAL && pgszSrc!=pgszDest ){
+    if( SQLITE_OK==rc 
+     && (destMode==PAGER_JOURNALMODE_WAL || sqlite3PagerIsMemdb(pDestPager))
+     && pgszSrc!=pgszDest 
+    ){
       rc = SQLITE_READONLY;
     }
   
