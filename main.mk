@@ -360,6 +360,7 @@ TESTSRC += \
   $(TOP)/ext/misc/percentile.c \
   $(TOP)/ext/misc/prefixes.c \
   $(TOP)/ext/misc/qpvtab.c \
+  $(TOP)/ext/misc/randomjson.c \
   $(TOP)/ext/misc/regexp.c \
   $(TOP)/ext/misc/remember.c \
   $(TOP)/ext/misc/series.c \
@@ -526,12 +527,15 @@ FUZZCHECK_OPT += -DSQLITE_ENABLE_RTREE
 FUZZCHECK_OPT += -DSQLITE_ENABLE_GEOPOLY
 FUZZCHECK_OPT += -DSQLITE_ENABLE_DBSTAT_VTAB
 FUZZCHECK_OPT += -DSQLITE_ENABLE_BYTECODE_VTAB
+FUZZCHECK_OPT += -DSQLITE_STRICT_SUBTYPE=1
+FUZZCHECK_OPT += -DSQLITE_STATIC_RANDOMJSON
 FUZZSRC += $(TOP)/test/fuzzcheck.c
 FUZZSRC += $(TOP)/test/ossfuzz.c
 FUZZSRC += $(TOP)/test/vt02.c
 FUZZSRC += $(TOP)/test/fuzzinvariants.c
 FUZZSRC += $(TOP)/ext/recover/dbdata.c
 FUZZSRC += $(TOP)/ext/recover/sqlite3recover.c
+FUZZSRC += $(TOP)/ext/misc/randomjson.c
 DBFUZZ_OPT =
 KV_OPT = -DSQLITE_THREADSAFE=0 -DSQLITE_DIRECT_OVERFLOW_READ
 ST_OPT = -DSQLITE_THREADSAFE=0
@@ -566,6 +570,12 @@ srcck1$(EXE):	$(TOP)/tool/srcck1.c
 sourcetest:	srcck1$(EXE) sqlite3.c
 	./srcck1 sqlite3.c
 
+src-verify:	$(TOP)/tool/src-verify.c
+	$(BCC) -o src-verify$(EXE) $(TOP)/tool/src-verify.c
+
+verify-source:	./src-verify
+	./src-verify $(TOP)
+
 fuzzershell$(EXE):	$(TOP)/tool/fuzzershell.c sqlite3.c sqlite3.h
 	$(TCCX) -o fuzzershell$(EXE) -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION \
 	  $(FUZZERSHELL_OPT) $(TOP)/tool/fuzzershell.c sqlite3.c \
@@ -591,7 +601,17 @@ dbfuzz2$(EXE):	$(TOP)/test/dbfuzz2.c sqlite3.c sqlite3.h
 	  $(DBFUZZ2_OPTS) $(TOP)/test/dbfuzz2.c sqlite3.c  $(TLIBS) $(THREADLIB)
 
 fuzzcheck$(EXE):	$(FUZZSRC) sqlite3.c sqlite3.h $(FUZZDEP)
-	$(TCCX) -o fuzzcheck$(EXE) -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION \
+	$(TCCX) -o $@ -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION \
+		-DSQLITE_ENABLE_MEMSYS5 $(FUZZCHECK_OPT) -DSQLITE_OSS_FUZZ \
+		$(FUZZSRC) sqlite3.c $(TLIBS) $(THREADLIB)
+
+fuzzcheck-asan$(EXE):	$(FUZZSRC) sqlite3.c sqlite3.h $(FUZZDEP)
+	$(TCCX) -fsanitize=address -o $W -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION \
+		-DSQLITE_ENABLE_MEMSYS5 $(FUZZCHECK_OPT) -DSQLITE_OSS_FUZZ \
+		$(FUZZSRC) sqlite3.c $(TLIBS) $(THREADLIB)
+
+fuzzcheck-ubsan$(EXE):	$(FUZZSRC) sqlite3.c sqlite3.h $(FUZZDEP)
+	$(TCCX) -fsanitize=undefined -o $@ -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION \
 		-DSQLITE_ENABLE_MEMSYS5 $(FUZZCHECK_OPT) -DSQLITE_OSS_FUZZ \
 		$(FUZZSRC) sqlite3.c $(TLIBS) $(THREADLIB)
 
@@ -638,7 +658,7 @@ target_source:	$(SRC) $(TOP)/tool/vdbe-compress.tcl fts5.c
 	cp fts5.c fts5.h tsrc
 	touch target_source
 
-sqlite3.c:	target_source $(TOP)/tool/mksqlite3c.tcl
+sqlite3.c:	target_source $(TOP)/tool/mksqlite3c.tcl src-verify
 	tclsh $(TOP)/tool/mksqlite3c.tcl
 	cp tsrc/sqlite3ext.h .
 	cp $(TOP)/ext/session/sqlite3session.h .
@@ -650,7 +670,7 @@ sqlite3.c:	target_source $(TOP)/tool/mksqlite3c.tcl
 sqlite3ext.h:	target_source
 	cp tsrc/sqlite3ext.h .
 
-sqlite3.c-debug:	target_source $(TOP)/tool/mksqlite3c.tcl
+sqlite3.c-debug:	target_source $(TOP)/tool/mksqlite3c.tcl src-verify
 	tclsh $(TOP)/tool/mksqlite3c.tcl --linemacros=1
 	echo '#ifndef USE_SYSTEM_SQLITE' >tclsqlite3.c
 	cat sqlite3.c >>tclsqlite3.c
@@ -740,6 +760,7 @@ SHELL_SRC = \
 	$(TOP)/ext/expert/sqlite3expert.h \
 	$(TOP)/ext/misc/zipfile.c \
 	$(TOP)/ext/misc/memtrace.c \
+	$(TOP)/ext/misc/pcachetrace.c \
 	$(TOP)/ext/recover/dbdata.c \
 	$(TOP)/ext/recover/sqlite3recover.c \
 	$(TOP)/ext/recover/sqlite3recover.h \
@@ -881,6 +902,8 @@ TESTFIXTURE_FLAGS += -DSQLITE_ENABLE_DBPAGE_VTAB
 TESTFIXTURE_FLAGS += -DSQLITE_ENABLE_BYTECODE_VTAB
 TESTFIXTURE_FLAGS += -DTCLSH_INIT_PROC=sqlite3TestInit
 TESTFIXTURE_FLAGS += -DSQLITE_CKSUMVFS_STATIC
+TESTFIXTURE_FLAGS += -DSQLITE_STATIC_RANDOMJSON
+TESTFIXTURE_FLAGS += -DSQLITE_STRICT_SUBTYPE=1
 
 testfixture$(EXE): $(TESTSRC2) libsqlite3.a $(TESTSRC) $(TOP)/src/tclsqlite.c
 	$(TCCX) $(TCL_FLAGS) $(TESTFIXTURE_FLAGS)                            \
@@ -910,11 +933,11 @@ fulltestonly:	$(TESTPROGS) fuzztest
 queryplantest:	testfixture$(EXE) sqlite3$(EXE)
 	./testfixture$(EXE) $(TOP)/test/permutations.test queryplanner $(TESTOPTS)
 
-fuzztest:	fuzzcheck$(EXE) $(FUZZDATA) sessionfuzz$(EXE) $(TOP)/test/sessionfuzz-data1.db
+fuzztest:	fuzzcheck$(EXE) $(FUZZDATA) sessionfuzz$(EXE)
 	./fuzzcheck$(EXE) $(FUZZDATA)
 	./sessionfuzz run $(TOP)/test/sessionfuzz-data1.db
 
-valgrindfuzz:	fuzzcheck$(EXE) $(FUZZDATA) sessionfuzz$(EXE) $(TOP)/test/sessionfuzz-data1.db
+valgrindfuzz:	fuzzcheck$(EXE) $(FUZZDATA) sessionfuzz$(EXE)
 	valgrind ./fuzzcheck$(EXE) --cell-size-check --limit-mem 10M $(FUZZDATA)
 	valgrind ./sessionfuzz run $(TOP)/test/sessionfuzz-data1.db
 
@@ -932,6 +955,9 @@ testrunner:	testfixture$(EXE)
 # Runs both fuzztest and testrunner, consecutively.
 #
 devtest:	testfixture$(EXE) fuzztest testrunner
+
+mdevtest:
+	tclsh $(TOP)/test/testrunner.tcl mdevtest
 
 # A very quick test using only testfixture and omitting all the slower
 # tests.  Designed to run in under 3 minutes on a workstation.
@@ -1117,3 +1143,4 @@ clean:
 	rm -f fts5.* fts5parse.*
 	rm -f lsm.h lsm1.c
 	rm -f threadtest5
+	rm -f src-verify

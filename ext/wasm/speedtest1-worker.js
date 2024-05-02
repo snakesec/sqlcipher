@@ -5,11 +5,11 @@
   if(urlParams.has('sqlite3.dir')){
     speedtestJs = urlParams.get('sqlite3.dir') + '/' + speedtestJs;
   }
-  importScripts('common/whwasmutil.js', speedtestJs);
+  importScripts(speedtestJs);
   /**
-     If this environment contains OPFS, this function initializes it and
-     returns the name of the dir on which OPFS is mounted, else it returns
-     an empty string.
+     If this build includes WASMFS, this function initializes it and
+     returns the name of the dir on which OPFS is mounted, else it
+     returns an empty string.
   */
   const wasmfsDir = function f(wasmUtil){
     if(undefined !== f._) return f._;
@@ -47,8 +47,9 @@
   };
   const log = (...args)=>logMsg('stdout',args);
   const logErr = (...args)=>logMsg('stderr',args);
+  const realSahName = 'opfs-sahpool-speedtest1';
 
-  const runSpeedtest = function(cliFlagsArray){
+  const runSpeedtest = async function(cliFlagsArray){
     const scope = App.wasm.scopedAllocPush();
     const dbFile = App.pDir+"/speedtest1.sqlite3";
     try{
@@ -56,7 +57,27 @@
         "speedtest1.wasm", ...cliFlagsArray, dbFile
       ];
       App.logBuffer.length = 0;
+      const ndxSahPool = argv.indexOf('opfs-sahpool');
+      if(ndxSahPool>0){
+        argv[ndxSahPool] = realSahName;
+        log("Updated argv for opfs-sahpool: --vfs",realSahName);
+      }
       mPost('run-start', [...argv]);
+      if(App.sqlite3.installOpfsSAHPoolVfs
+         && !App.sqlite3.$SAHPoolUtil
+         && ndxSahPool>0){
+        log("Installing opfs-sahpool as",realSahName,"...");
+        await App.sqlite3.installOpfsSAHPoolVfs({
+          name: realSahName,
+          initialCapacity: 3,
+          clearOnInit: true,
+          verbosity: 2
+        }).then(PoolUtil=>{
+          log("opfs-sahpool successfully installed as",PoolUtil.vfsName);
+          App.sqlite3.$SAHPoolUtil = PoolUtil;
+          //console.log("sqlite3.oo1.OpfsSAHPoolDb =", App.sqlite3.oo1.OpfsSAHPoolDb);
+        });
+      }
       App.wasm.xCall('wasm_main', argv.length,
                      App.wasm.scopedAllocMainArgv(argv));
     }catch(e){
@@ -71,7 +92,10 @@
   self.onmessage = function(msg){
     msg = msg.data;
     switch(msg.type){
-        case 'run': runSpeedtest(msg.data || []); break;
+        case 'run':
+          runSpeedtest(msg.data || [])
+            .catch(e=>mPost('error',e));
+          break;
         default:
           logErr("Unhandled worker message type:",msg.type);
           break;
@@ -83,8 +107,10 @@
     printErr: logErr,
     setStatus: (text)=>mPost('load-status',text)
   };
-  self.sqlite3InitModule(EmscriptenModule).then((sqlite3)=>{
-    const S = sqlite3;
+  log("Initializing speedtest1 module...");
+  self.sqlite3InitModule(EmscriptenModule).then(async (sqlite3)=>{
+    const S = globalThis.S = App.sqlite3 = sqlite3;
+    log("Loaded speedtest1 module. Setting up...");
     App.vfsUnlink = function(pDb, fname){
       const pVfs = S.wasm.sqlite3_wasm_db_vfs(pDb, 0);
       if(pVfs) S.wasm.sqlite3_wasm_vfs_unlink(pVfs, fname||0);
@@ -95,5 +121,7 @@
     //else log("Using transient storage.");
     mPost('ready',true);
     log("Registered VFSes:", ...S.capi.sqlite3_js_vfs_list());
+  }).catch(e=>{
+    logErr(e);
   });
 })();

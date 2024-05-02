@@ -1,3 +1,4 @@
+//#ifnot omit-oo1
 /**
   2022-07-22
 
@@ -62,7 +63,7 @@
 
   ```
   {
-    type: string, // one of: 'open', 'close', 'exec', 'config-get'
+    type: string, // one of: 'open', 'close', 'exec', 'export', 'config-get'
 
     messageId: OPTIONAL arbitrary value. The worker will copy it as-is
     into response messages to assist in client-side dispatching.
@@ -278,6 +279,19 @@
   The arguments are in the same form accepted by oo1.DB.exec(), with
   the exceptions noted below.
 
+  If the `countChanges` arguments property (added in version 3.43) is
+  truthy then the `result` property contained by the returned object
+  will have a `changeCount` property which holds the number of changes
+  made by the provided SQL. Because the SQL may contain an arbitrary
+  number of statements, the `changeCount` is calculated by calling
+  `sqlite3_total_changes()` before and after the SQL is evaluated. If
+  the value of `countChanges` is 64 then the `changeCount` property
+  will be returned as a 64-bit integer in the form of a BigInt (noting
+  that that will trigger an exception if used in a BigInt-incapable
+  build).  In the latter case, the number of changes is calculated by
+  calling `sqlite3_total_changes64()` before and after the SQL is
+  evaluated.
+
   A function-type args.callback property cannot cross
   the window/Worker boundary, so is not useful here. If
   args.callback is a string then it is assumed to be a
@@ -312,6 +326,37 @@
   passed only a string), noting that options.resultRows and
   options.columnNames may be populated by the call to db.exec().
 
+
+  ====================================================================
+  "export" the current db
+
+  To export the underlying database as a byte array...
+
+  Message format:
+
+  ```
+  {
+    type: "export",
+    messageId: ...as above...,
+    dbId: ...as above...
+  }
+  ```
+
+  Response:
+
+  ```
+  {
+    type: "export",
+    messageId: ...as above...,
+    dbId: ...as above...
+    result: {
+      byteArray: Uint8Array (as per sqlite3_js_db_export()),
+      filename: the db filename,
+      mimetype: "application/x-sqlite3"
+    }
+  }
+  ```
+
 */
 globalThis.sqlite3ApiBootstrap.initializers.push(function(sqlite3){
 sqlite3.initWorker1API = function(){
@@ -320,7 +365,6 @@ sqlite3.initWorker1API = function(){
   if(!(globalThis.WorkerGlobalScope instanceof Function)){
     toss("initWorker1API() must be run from a Worker thread.");
   }
-  const self = this.self;
   const sqlite3 = this.sqlite3 || toss("Missing this.sqlite3 object.");
   const DB = sqlite3.oo1.DB;
 
@@ -523,7 +567,13 @@ sqlite3.initWorker1API = function(){
         }
       }
       try {
+        const changeCount = !!rc.countChanges
+              ? db.changes(true,(64===rc.countChanges))
+              : undefined;
         db.exec(rc);
+        if(undefined !== changeCount){
+          rc.changeCount = db.changes(true,64===rc.countChanges) - changeCount;
+        }
         if(rc.callback instanceof Function){
           rc.callback = theCallback;
           /* Post a sentinel message to tell the client that the end
@@ -638,5 +688,8 @@ sqlite3.initWorker1API = function(){
     }, wState.xfer);
   };
   globalThis.postMessage({type:'sqlite3-api',result:'worker1-ready'});
-}.bind({self, sqlite3});
+}.bind({sqlite3});
 });
+//#else
+/* Built with the omit-oo1 flag. */
+//#endif ifnot omit-oo1

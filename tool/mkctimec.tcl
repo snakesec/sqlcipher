@@ -7,6 +7,13 @@
 # definition used in src/ctime.c, run this script from
 # the checkout root. It generates src/ctime.c .
 #
+# Results are normally written into src/ctime.c.  But if an argument is
+# provided, results are written there instead.  Examples:
+#
+#    tclsh tool/mkctimec.tcl                ;# <-- results to src/ctime.c
+#
+#    tclsh tool/mkctimec.tcl /dev/tty       ;# <-- results to the terminal
+#
 
 
 set ::headWarning {/* DO NOT EDIT!
@@ -98,6 +105,7 @@ set boolean_defnnz_options {
 set boolean_defnil_options {
   SQLITE_32BIT_ROWID
   SQLITE_4_BYTE_ALIGNED_MALLOC
+  SQLITE_ALLOW_ROWID_IN_VIEW
   SQLITE_ALLOW_URI_AUTHORITY
   SQLITE_BUG_COMPATIBLE_20160819
   SQLITE_CASE_SENSITIVE_LIKE
@@ -180,6 +188,7 @@ set boolean_defnil_options {
   SQLITE_IGNORE_FLOCK_LOCK_ERRORS
   SQLITE_INLINE_MEMCPY
   SQLITE_INT64_TYPE
+  SQLITE_LEGACY_JSON_VALID
   SQLITE_LIKE_DOESNT_MATCH_BLOBS
   SQLITE_LOCK_TRACE
   SQLITE_LOG_CACHE_SPILL
@@ -238,6 +247,7 @@ set boolean_defnil_options {
   SQLITE_OMIT_REINDEX
   SQLITE_OMIT_SCHEMA_PRAGMAS
   SQLITE_OMIT_SCHEMA_VERSION_PRAGMAS
+  SQLITE_OMIT_SEH
   SQLITE_OMIT_SHARED_CACHE
   SQLITE_OMIT_SHUTDOWN_DIRECTORIES
   SQLITE_OMIT_SUBQUERY
@@ -307,6 +317,7 @@ set value_options {
   SQLITE_ENABLE_8_3_NAMES
   SQLITE_ENABLE_CEROD
   SQLITE_ENABLE_LOCKING_STYLE
+  SQLITE_EXTRA_AUTOEXT
   SQLITE_EXTRA_INIT
   SQLITE_EXTRA_SHUTDOWN
   SQLITE_FTS3_MAX_EXPR_DEPTH
@@ -426,10 +437,15 @@ foreach v $value2_options {
 }]
 }
 
-set ctime_c "src/ctime.c"
+if {$argc>0} {
+  set destfile [lindex $argv 0]
+} else {
+  set destfile "[file dir [file dir [file normal $argv0]]]/src/ctime.c"
+  puts "Overwriting $destfile..."
+}
 
-if {[catch {set cfd [open $ctime_c w]}]!=0} {
-  puts stderr "File '$ctime_c' unwritable."
+if {[catch {set cfd [open $destfile w]}]!=0} {
+  puts stderr "File '$destfile' unwritable."
   exit 1;
 }
 

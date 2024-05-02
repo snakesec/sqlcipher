@@ -126,6 +126,7 @@ typedef struct VdbeOpList VdbeOpList;
 #define P4_INT64      (-13) /* P4 is a 64-bit signed integer */
 #define P4_INTARRAY   (-14) /* P4 is a vector of 32-bit integers */
 #define P4_FUNCCTX    (-15) /* P4 is a pointer to an sqlite3_context object */
+#define P4_TABLEREF   (-16) /* Like P4_TABLE, but reference counted */
 
 /* Error message codes for OP_Halt */
 #define P5_ConstraintNotNull 1
@@ -327,7 +328,7 @@ int sqlite3VdbeBytecodeVtabInit(sqlite3*);
 ** The VdbeCoverage macros are used to set a coverage testing point
 ** for VDBE branch instructions.  The coverage testing points are line
 ** numbers in the sqlite3.c source file.  VDBE branch coverage testing
-** only works with an amalagmation build.  That's ok since a VDBE branch
+** only works with an amalgamation build.  That's ok since a VDBE branch
 ** coverage build designed for testing the test suite only.  No application
 ** should ever ship with VDBE branch coverage measuring turned on.
 **
@@ -345,7 +346,7 @@ int sqlite3VdbeBytecodeVtabInit(sqlite3*);
 **                                     // NULL option is not possible
 **
 **    VdbeCoverageEqNe(v)              // Previous OP_Jump is only interested
-**                                     // in distingishing equal and not-equal.
+**                                     // in distinguishing equal and not-equal.
 **
 ** Every VDBE branch operation must be tagged with one of the macros above.
 ** If not, then when "make test" is run with -DSQLITE_VDBE_COVERAGE and
@@ -355,7 +356,7 @@ int sqlite3VdbeBytecodeVtabInit(sqlite3*);
 ** During testing, the test application will invoke
 ** sqlite3_test_control(SQLITE_TESTCTRL_VDBE_COVERAGE,...) to set a callback
 ** routine that is invoked as each bytecode branch is taken.  The callback
-** contains the sqlite3.c source line number ov the VdbeCoverage macro and
+** contains the sqlite3.c source line number of the VdbeCoverage macro and
 ** flags to indicate whether or not the branch was taken.  The test application
 ** is responsible for keeping track of this and reporting byte-code branches
 ** that are never taken.
