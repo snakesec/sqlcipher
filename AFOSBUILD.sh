@@ -1,4 +1,4 @@
-./configure --enable-tempstore=yes CFLAGS="-DSQLITE_HAS_CODEC" --disable-tcl
+./configure --with-tempstore=yes CFLAGS="-DSQLITE_HAS_CODEC" --disable-tcl
 
 if [ $? -eq 0 ]
 then
