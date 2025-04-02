@@ -16,13 +16,13 @@ namespace eval trd {
   set tcltest(linux.Have-Not)             veryquick
   set tcltest(linux.Secure-Delete)        veryquick
   set tcltest(linux.Unlock-Notify)        veryquick
-  set tcltest(linux.User-Auth)            veryquick
   set tcltest(linux.Update-Delete-Limit)  veryquick
   set tcltest(linux.Extra-Robustness)     veryquick
   set tcltest(linux.Device-Two)           veryquick
   set tcltest(linux.No-lookaside)         veryquick
   set tcltest(linux.Devkit)               veryquick
   set tcltest(linux.Apple)                veryquick
+  set tcltest(linux.Android)              veryquick
   set tcltest(linux.Sanitize)             veryquick
   set tcltest(linux.Device-One)           all
   set tcltest(linux.Default)              all_plus_autovacuum_crash
@@ -53,6 +53,7 @@ namespace eval trd {
   set extra(linux.Device-Two)             {fuzztest sourcetest threadtest}
   set extra(linux.No-lookaside)           {fuzztest sourcetest}
   set extra(linux.Devkit)                 {fuzztest sourcetest}
+  set extra(linux.Android)                {fuzztest sourcetest}
   set extra(linux.Apple)                  {fuzztest sourcetest}
   set extra(linux.Sanitize)               {fuzztest sourcetest}
   set extra(linux.Default)                {fuzztest sourcetest threadtest}
@@ -71,11 +72,11 @@ namespace eval trd {
   # The following mirrors the set of test suites invoked by "all.test".
   #
   set all_configs {
-    full no_optimization memsubsys1 memsubsys2 singlethread 
-    multithread onefile utf16 exclusive persistent_journal 
+    full no_optimization memsubsys1 memsubsys2 singlethread
+    multithread onefile utf16 exclusive persistent_journal
     persistent_journal_error no_journal no_journal_error
-    autovacuum_ioerr no_mutex_try fullmutex journaltest 
-    inmemory_journal pcache0 pcache10 pcache50 pcache90 
+    autovacuum_ioerr no_mutex_try fullmutex journaltest
+    inmemory_journal pcache0 pcache10 pcache50 pcache90
     pcache100 prepare mmap
   }
 
@@ -87,18 +88,21 @@ namespace eval trd {
     --disable-amalgamation --disable-shared
     --enable-session
     -DSQLITE_ENABLE_RBU
+    -DSQLITE_ENABLE_STMT_SCANSTATUS
   }
 
-  # These two are used by [testrunner.tcl mdevtest] (All-O0) and 
+  # These two are used by [testrunner.tcl mdevtest] (All-O0) and
   # [testrunner.tcl sdevtest] (All-Sanitize).
   #
   set build(All-Debug) {
-    --enable-debug --enable-all
+    --with-debug --enable-all
+    -DSQLITE_ENABLE_ORDERED_SET_AGGREGATES
+    -DSQLITE_ENABLE_NORMALIZE
   }
   set build(All-O0) {
     -O0 --enable-all
   }
-  set build(All-Sanitize) { 
+  set build(All-Sanitize) {
     -DSQLITE_OMIT_LOOKASIDE=1
     --enable-all -fsanitize=address,undefined -fno-sanitize-recover=undefined
   }
@@ -107,12 +111,16 @@ namespace eval trd {
     CC=clang -fsanitize=address,undefined -fno-sanitize-recover=undefined
     -DSQLITE_ENABLE_STAT4
     -DSQLITE_OMIT_LOOKASIDE=1
+    -DSQLITE_ENABLE_NORMALIZE
     -DCONFIG_SLOWDOWN_FACTOR=5.0
-    --enable-debug
+    -DSQLITE_ENABLE_RBU
+    --with-debug
     --enable-all
   }
   set build(Stdcall) {
+    -DWITHOUT_JIMSH=1
     -DUSE_STDCALL=1
+    -DSQLITE_USE_ONLY_WIN32=1
     -O2
   }
 
@@ -135,10 +143,6 @@ namespace eval trd {
     -DSQLITE_ENABLE_UNLOCK_NOTIFY
     -DSQLITE_THREADSAFE
     -DSQLITE_TCL_DEFAULT_FULLMUTEX=1
-  }
-  set build(User-Auth) {
-    -O2
-    -DSQLITE_USER_AUTHENTICATION=1
   }
   set build(Secure-Delete) {
     -O2
@@ -166,6 +170,7 @@ namespace eval trd {
     -DSQLITE_SOUNDEX=1
     -DSQLITE_ENABLE_ATOMIC_WRITE=1
     -DSQLITE_ENABLE_MEMORY_MANAGEMENT=1
+    -DSQLITE_ENABLE_NORMALIZE
     -DSQLITE_ENABLE_OVERSIZE_CELL_CHECK=1
     -DSQLITE_ENABLE_STAT4
     -DSQLITE_ENABLE_STMT_SCANSTATUS
@@ -181,6 +186,7 @@ namespace eval trd {
     -DSQLITE_ENABLE_FTS3=1
     -DSQLITE_ENABLE_RTREE=1
     -DSQLITE_ENABLE_MEMSYS5=1
+    -DSQLITE_ENABLE_NORMALIZE
     -DSQLITE_ENABLE_COLUMN_METADATA=1
     -DSQLITE_ENABLE_STAT4
     -DSQLITE_ENABLE_HIDDEN_COLUMNS
@@ -191,7 +197,7 @@ namespace eval trd {
   set build(Debug-Two) {
     -DSQLITE_DEFAULT_MEMSTATUS=0
     -DSQLITE_MAX_EXPR_DEPTH=0
-    --enable-debug
+    --with-debug
   }
   set build(Fast-One) {
     -O6
@@ -202,7 +208,6 @@ namespace eval trd {
     -DSQLITE_MAX_ATTACHED=125
     -DSQLITE_MAX_MMAP_SIZE=12884901888
     -DSQLITE_ENABLE_SORTER_MMAP=1
-    -DLONGDOUBLE_TYPE=double
     --enable-session
   }
   set build(Device-One) {
@@ -245,6 +250,40 @@ namespace eval trd {
     -O2
     -DSQLITE_ENABLE_LOCKING_STYLE=1
   }
+  set build(Android) {
+    -Os
+    -DHAVE_USLEEP=1
+    -DSQLITE_HAVE_ISNAN
+    -DSQLITE_POWERSAFE_OVERWRITE=1
+    -DSQLITE_DEFAULT_FILE_FORMAT=4
+    -DSQLITE_DEFAULT_AUTOVACUUM=1
+    -DSQLITE_ENABLE_MEMORY_MANAGEMENT=1
+    -DSQLITE_ENABLE_FTS3
+    -DSQLITE_ENABLE_FTS3_BACKWARDS
+    -DSQLITE_ENABLE_FTS4
+    -DSQLITE_SECURE_DELETE
+    -DSQLITE_ENABLE_BATCH_ATOMIC_WRITE
+    -DBIONIC_IOCTL_NO_SIGNEDNESS_OVERLOAD
+    -DSQLITE_ALLOW_ROWID_IN_VIEW
+    -DSQLITE_ENABLE_BYTECODE_VTAB
+    -Wno-unused-parameter
+    -Werror
+    -DUSE_PREAD64
+    -Dfdatasync=fdatasync
+    -DHAVE_MALLOC_H=1
+    -DHAVE_MALLOC_USABLE_SIZE
+    -DSQLITE_ENABLE_DBSTAT_VTAB
+  }
+  # Compile-options used by Android but omitted from these
+  # tests:
+  #   -DNDEBUG=1
+  #   -DSQLITE_DEFAULT_LEGACY_ALTER_TABLE
+  #   -DSQLITE_DEFAULT_JOURNAL_SIZE_LIMIT=1048576
+  #   -DSQLITE_DEFAULT_FILE_PERMISSIONS=0600
+  #   -DSQLITE_OMIT_BUILTIN_TEST
+  #   -DSQLITE_OMIT_LOAD_EXTENSION
+  #   -DSQLITE_OMIT_COMPILEOPTION_DIAGS
+  #
   set build(Apple) {
     -Os
     -DHAVE_GMTIME_R=1
@@ -264,6 +303,7 @@ namespace eval trd {
     -DSQLITE_ENABLE_FTS3=1
     -DSQLITE_ENABLE_FTS3_PARENTHESIS=1
     -DSQLITE_ENABLE_FTS3_TOKENIZER=1
+    -DSQLITE_ENABLE_NORMALIZE=1
     -DSQLITE_ENABLE_PERSIST_WAL=1
     -DSQLITE_ENABLE_PURGEABLE_PCACHE=1
     -DSQLITE_ENABLE_RTREE=1
@@ -308,7 +348,6 @@ namespace eval trd {
     -DSQLITE_ENABLE_FTS4
     -DSQLITE_ENABLE_RTREE
     -DSQLITE_ENABLE_HIDDEN_COLUMNS
-    -DLONGDOUBLE_TYPE=double
     -DCONFIG_SLOWDOWN_FACTOR=8.0
   }
 
@@ -449,7 +488,7 @@ proc make_sh_script {srcdir opts cflags makeOpts configOpts} {
     TCLDIR="$tcldir"
     
     if [ ! -f Makefile ] ; then
-      \$SRCDIR/configure --with-tcl=\$TCL $configOpts 
+      \$SRCDIR/configure --with-tcl=\$TCLDIR $configOpts 
     fi
     
     $myopts
@@ -530,7 +569,7 @@ proc make_script {cfg srcdir bMsvc} {
           }
           --enable-fts5 {
             lappend opts -DSQLITE_ENABLE_FTS5
-          } 
+          }
           --enable-shared {
             lappend makeOpts USE_CRT_DLL=1 DYNAMIC_SHELL=1
           }
@@ -540,7 +579,7 @@ proc make_script {cfg srcdir bMsvc} {
           }
           --enable-all {
           }
-          --enable-debug {
+          --with-debug {
             # lappend makeOpts OPTIMIZATIONS=0
             lappend opts -DSQLITE_DEBUG
           }
@@ -598,7 +637,12 @@ proc trd_buildscript {config srcdir bMsvc} {
 
   # Ensure that the named configuration exists.
   if {![info exists build($config)]} {
-    error "No such build config: $config"
+    if {$config!="help"} {
+      puts "No such build config: $config"
+    }
+    puts "Available configurations: [lsort [array names build]]"
+    flush stdout
+    exit 1
   }
 
   # Generate and return the script.
@@ -637,4 +681,3 @@ proc trd_test_script_properties {path} {
 
   set trd_test_script_properties_cache($path)
 }
-

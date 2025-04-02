@@ -31,7 +31,6 @@
 /* BEGIN SQLCIPHER */
 #ifdef SQLITE_HAS_CODEC
 #ifdef SQLCIPHER_CRYPTO_NSS
-#include "crypto.h"
 #include "sqlcipher.h"
 #include <nss/blapit.h>
 #include <nss/nss.h>
@@ -44,25 +43,25 @@ int sqlcipher_nss_setup(sqlcipher_provider *p);
 
 static int sqlcipher_nss_activate(void *ctx) {
 
-  sqlcipher_log(SQLCIPHER_LOG_TRACE, "sqlcipher_nss_activate: entering SQLCIPHER_MUTEX_PROVIDER_ACTIVATE");
+  sqlcipher_log(SQLCIPHER_LOG_TRACE, SQLCIPHER_LOG_MUTEX, "sqlcipher_nss_activate: entering SQLCIPHER_MUTEX_PROVIDER_ACTIVATE");
   sqlite3_mutex_enter(sqlcipher_mutex(SQLCIPHER_MUTEX_PROVIDER_ACTIVATE));
-  sqlcipher_log(SQLCIPHER_LOG_TRACE, "sqlcipher_nss_activate: entered SQLCIPHER_MUTEX_PROVIDER_ACTIVATE");
+  sqlcipher_log(SQLCIPHER_LOG_TRACE, SQLCIPHER_LOG_MUTEX, "sqlcipher_nss_activate: entered SQLCIPHER_MUTEX_PROVIDER_ACTIVATE");
   if (nss_init_context == NULL) {
     nss_init_context = NSS_InitContext("", "", "", "", NULL,
                         NSS_INIT_READONLY | NSS_INIT_NOCERTDB | NSS_INIT_NOMODDB |
                         NSS_INIT_FORCEOPEN | NSS_INIT_OPTIMIZESPACE | NSS_INIT_NOROOTINIT);
   }
   nss_init_count++;
-  sqlcipher_log(SQLCIPHER_LOG_TRACE, "sqlcipher_nss_activate: leaving SQLCIPHER_MUTEX_PROVIDER_ACTIVATE");
+  sqlcipher_log(SQLCIPHER_LOG_TRACE, SQLCIPHER_LOG_MUTEX, "sqlcipher_nss_activate: leaving SQLCIPHER_MUTEX_PROVIDER_ACTIVATE");
   sqlite3_mutex_leave(sqlcipher_mutex(SQLCIPHER_MUTEX_PROVIDER_ACTIVATE));
-  sqlcipher_log(SQLCIPHER_LOG_TRACE, "sqlcipher_nss_activate: left SQLCIPHER_MUTEX_PROVIDER_ACTIVATE");
+  sqlcipher_log(SQLCIPHER_LOG_TRACE, SQLCIPHER_LOG_MUTEX, "sqlcipher_nss_activate: left SQLCIPHER_MUTEX_PROVIDER_ACTIVATE");
   return SQLITE_OK;
 }
 
 static int sqlcipher_nss_deactivate(void *ctx) {
-  sqlcipher_log(SQLCIPHER_LOG_TRACE, "sqlcipher_nss_activate: entering SQLCIPHER_MUTEX_PROVIDER_ACTIVATE");
+  sqlcipher_log(SQLCIPHER_LOG_TRACE, SQLCIPHER_LOG_MUTEX, "sqlcipher_nss_activate: entering SQLCIPHER_MUTEX_PROVIDER_ACTIVATE");
   sqlite3_mutex_enter(sqlcipher_mutex(SQLCIPHER_MUTEX_PROVIDER_ACTIVATE));
-  sqlcipher_log(SQLCIPHER_LOG_TRACE, "sqlcipher_nss_activate: entered SQLCIPHER_MUTEX_PROVIDER_ACTIVATE");
+  sqlcipher_log(SQLCIPHER_LOG_TRACE, SQLCIPHER_LOG_MUTEX, "sqlcipher_nss_activate: entered SQLCIPHER_MUTEX_PROVIDER_ACTIVATE");
 
   nss_init_count--;
   if (nss_init_count == 0 && nss_init_context != NULL) {
@@ -70,13 +69,13 @@ static int sqlcipher_nss_deactivate(void *ctx) {
     nss_init_context = NULL;
   } 
 
-  sqlcipher_log(SQLCIPHER_LOG_TRACE, "sqlcipher_nss_activate: leaving SQLCIPHER_MUTEX_PROVIDER_ACTIVATE");
+  sqlcipher_log(SQLCIPHER_LOG_TRACE, SQLCIPHER_LOG_MUTEX, "sqlcipher_nss_activate: leaving SQLCIPHER_MUTEX_PROVIDER_ACTIVATE");
   sqlite3_mutex_leave(sqlcipher_mutex(SQLCIPHER_MUTEX_PROVIDER_ACTIVATE));
-  sqlcipher_log(SQLCIPHER_LOG_TRACE, "sqlcipher_nss_activate: left SQLCIPHER_MUTEX_PROVIDER_ACTIVATE");
+  sqlcipher_log(SQLCIPHER_LOG_TRACE, SQLCIPHER_LOG_MUTEX, "sqlcipher_nss_activate: left SQLCIPHER_MUTEX_PROVIDER_ACTIVATE");
   return SQLITE_OK;
 }
 
-static int sqlcipher_nss_add_random(void *ctx, void *buffer, int length) {
+static int sqlcipher_nss_add_random(void *ctx, const void *buffer, int length) {
   return SQLITE_OK;
 }
 
@@ -126,7 +125,13 @@ static int sqlcipher_nss_get_hmac_sz(void *ctx, int algorithm) {
   }
 }
 
-static int sqlcipher_nss_hmac(void *ctx, int algorithm, unsigned char *hmac_key, int key_sz, unsigned char *in, int in_sz, unsigned char *in2, int in2_sz, unsigned char *out) {
+static int sqlcipher_nss_hmac(
+  void *ctx, int algorithm,
+  const unsigned char *hmac_key, int key_sz,
+  const unsigned char *in, int in_sz,
+  const unsigned char *in2, int in2_sz,
+  unsigned char *out
+) {
   int rc = SQLITE_OK;
   unsigned int length;
   unsigned int outLen;
@@ -179,7 +184,13 @@ static int sqlcipher_nss_hmac(void *ctx, int algorithm, unsigned char *hmac_key,
     return rc;
 }
 
-static int sqlcipher_nss_kdf(void *ctx, int algorithm, const unsigned char *pass, int pass_sz, unsigned char* salt, int salt_sz, int workfactor, int key_sz, unsigned char *key) {
+static int sqlcipher_nss_kdf(
+  void *ctx, int algorithm,
+  const unsigned char *pass, int pass_sz,
+  const unsigned char* salt, int salt_sz,
+   int workfactor,
+   int key_sz, unsigned char *key
+) {
   int rc = SQLITE_OK;
   PK11SlotInfo * slot = NULL;
   SECAlgorithmID * algid = NULL;
@@ -231,7 +242,13 @@ static int sqlcipher_nss_kdf(void *ctx, int algorithm, const unsigned char *pass
     return rc;
 }
 
-static int sqlcipher_nss_cipher(void *ctx, int mode, unsigned char *key, int key_sz, unsigned char *iv, unsigned char *in, int in_sz, unsigned char *out) {
+static int sqlcipher_nss_cipher(
+  void *ctx, int mode,
+  const unsigned char *key, int key_sz,
+  const unsigned char *iv,
+  const unsigned char *in,
+  int in_sz, unsigned char *out
+) {
   int rc = SQLITE_OK;
   PK11SlotInfo * slot = NULL;
   PK11SymKey* symKey = NULL;
@@ -281,8 +298,8 @@ static int sqlcipher_nss_fips_status(void *ctx) {
 }
 
 int sqlcipher_nss_setup(sqlcipher_provider *p) {
-  p->activate = sqlcipher_nss_activate;
-  p->deactivate = sqlcipher_nss_deactivate;
+  p->init = NULL;
+  p->shutdown = NULL;
   p->random = sqlcipher_nss_random;
   p->get_provider_name = sqlcipher_nss_get_provider_name;
   p->hmac = sqlcipher_nss_hmac;

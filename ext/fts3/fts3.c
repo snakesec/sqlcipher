@@ -2344,10 +2344,15 @@ static int fts3PoslistPhraseMerge(
   if( *p1==POS_COLUMN ){ 
     p1++;
     p1 += fts3GetVarint32(p1, &iCol1);
+    /* iCol1==0 indicates corruption. Column 0 does not have a POS_COLUMN
+    ** entry, so this is actually end-of-doclist. */
+    if( iCol1==0 ) return 0;
   }
   if( *p2==POS_COLUMN ){ 
     p2++;
     p2 += fts3GetVarint32(p2, &iCol2);
+    /* As above, iCol2==0 indicates corruption. */
+    if( iCol2==0 ) return 0;
   }
 
   while( 1 ){
@@ -4014,22 +4019,24 @@ static int fts3IntegrityMethod(
   char **pzErr              /* Write error message here */
 ){
   Fts3Table *p = (Fts3Table*)pVtab;
-  int rc;
+  int rc = SQLITE_OK;
   int bOk = 0;
 
   UNUSED_PARAMETER(isQuick);
   rc = sqlite3Fts3IntegrityCheck(p, &bOk);
-  assert( rc!=SQLITE_CORRUPT_VTAB || bOk==0 );
-  if( rc!=SQLITE_OK && rc!=SQLITE_CORRUPT_VTAB ){
+  assert( rc!=SQLITE_CORRUPT_VTAB );
+  if( rc==SQLITE_ERROR || (rc&0xFF)==SQLITE_CORRUPT ){
     *pzErr = sqlite3_mprintf("unable to validate the inverted index for"
                              " FTS%d table %s.%s: %s",
                 p->bFts4 ? 4 : 3, zSchema, zTabname, sqlite3_errstr(rc));
-  }else if( bOk==0 ){
+    if( *pzErr ) rc = SQLITE_OK;
+  }else if( rc==SQLITE_OK && bOk==0 ){
     *pzErr = sqlite3_mprintf("malformed inverted index for FTS%d table %s.%s",
                 p->bFts4 ? 4 : 3, zSchema, zTabname);
+    if( *pzErr==0 ) rc = SQLITE_NOMEM;
   }
   sqlite3Fts3SegmentsClose(p);
-  return SQLITE_OK;
+  return rc;
 }
 
 
@@ -5516,7 +5523,7 @@ static int fts3EvalNearTest(Fts3Expr *pExpr, int *pRc){
       nTmp += p->pRight->pPhrase->doclist.nList;
     }
     nTmp += p->pPhrase->doclist.nList;
-    aTmp = sqlite3_malloc64(nTmp*2);
+    aTmp = sqlite3_malloc64(nTmp*2 + FTS3_VARINT_MAX);
     if( !aTmp ){
       *pRc = SQLITE_NOMEM;
       res = 0;
@@ -5778,6 +5785,24 @@ static void fts3EvalRestart(
     fts3EvalRestart(pCsr, pExpr->pLeft, pRc);
     fts3EvalRestart(pCsr, pExpr->pRight, pRc);
   }
+}
+
+/*
+** Expression node pExpr is an MSR phrase. This function restarts pExpr
+** so that it is a regular phrase query, not an MSR. SQLITE_OK is returned
+** if successful, or an SQLite error code otherwise.
+*/
+int sqlite3Fts3MsrCancel(Fts3Cursor *pCsr, Fts3Expr *pExpr){
+  int rc = SQLITE_OK;
+  if( pExpr->bEof==0 ){
+    i64 iDocid = pExpr->iDocid;
+    fts3EvalRestart(pCsr, pExpr, &rc);
+    while( rc==SQLITE_OK && pExpr->iDocid!=iDocid ){
+      fts3EvalNextRow(pCsr, pExpr, &rc);
+      if( pExpr->bEof ) rc = FTS_CORRUPT_VTAB;
+    }
+  }
+  return rc;
 }
 
 /*
@@ -6167,7 +6192,7 @@ int sqlite3Fts3Corrupt(){
 }
 #endif
 
-#if !SQLITE_CORE
+#if !defined(SQLITE_CORE)
 /*
 ** Initialize API pointer table, if required.
 */

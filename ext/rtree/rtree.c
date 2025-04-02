@@ -1841,6 +1841,8 @@ static int deserializeGeometry(sqlite3_value *pValue, RtreeConstraint *pCons){
   return SQLITE_OK;
 }
 
+int sqlite3IntFloatCompare(i64,double);
+
 /* 
 ** Rtree virtual table module xFilter method.
 */
@@ -1870,7 +1872,8 @@ static int rtreeFilter(
     i64 iNode = 0;
     int eType = sqlite3_value_numeric_type(argv[0]);
     if( eType==SQLITE_INTEGER
-     || (eType==SQLITE_FLOAT && sqlite3_value_double(argv[0])==iRowid)
+     || (eType==SQLITE_FLOAT 
+         && 0==sqlite3IntFloatCompare(iRowid,sqlite3_value_double(argv[0])))
     ){
       rc = findLeafNode(pRtree, iRowid, &pLeaf, &iNode);
     }else{
@@ -3225,6 +3228,7 @@ constraint:
 */
 static int rtreeBeginTransaction(sqlite3_vtab *pVtab){
   Rtree *pRtree = (Rtree *)pVtab;
+  assert( pRtree->inWrTrans==0 );
   pRtree->inWrTrans = 1;
   return SQLITE_OK;
 }
@@ -3771,8 +3775,8 @@ static void rtreenode(sqlite3_context *ctx, int nArg, sqlite3_value **apArg){
     sqlite3_str_append(pOut, "}", 1);
   }
   errCode = sqlite3_str_errcode(pOut);
-  sqlite3_result_text(ctx, sqlite3_str_finish(pOut), -1, sqlite3_free);
   sqlite3_result_error_code(ctx, errCode);
+  sqlite3_result_text(ctx, sqlite3_str_finish(pOut), -1, sqlite3_free);
 }
 
 /* This routine implements an SQL function that returns the "depth" parameter
@@ -4445,7 +4449,7 @@ int sqlite3_rtree_query_callback(
   );
 }
 
-#if !SQLITE_CORE
+#ifndef SQLITE_CORE
 #ifdef _WIN32
 __declspec(dllexport)
 #endif
